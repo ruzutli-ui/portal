@@ -16,18 +16,81 @@ function db(): PDO
         spalte_sicherstellen($pdo, 'produkte', 'aktiv', 'INTEGER NOT NULL DEFAULT 1');
         spalte_sicherstellen($pdo, 'offerten', 'interne_notiz', "TEXT NOT NULL DEFAULT ''");
         spalte_sicherstellen($pdo, 'offerten', 'geaendert', 'TEXT');
+        spalte_sicherstellen($pdo, 'produkte', 'quelle', "TEXT NOT NULL DEFAULT ''");
+        spalte_sicherstellen($pdo, 'produkte', 'importiert', 'TEXT');
+        spalte_sicherstellen($pdo, 'offert_positionen', 'uvp', 'REAL');
+        $neueUvp = spalte_sicherstellen($pdo, 'produkte', 'uvp', 'REAL');
         $pdo->exec(file_get_contents(__DIR__ . '/seed.sql'));
+        if ($neueUvp) {
+            // Bisherige Preise gelten als UVP, solange nichts anderes importiert wurde.
+            $pdo->exec('UPDATE produkte SET uvp = preis WHERE uvp IS NULL');
+        }
     }
     return $pdo;
 }
 
 /** Ergänzt eine Spalte in bestehenden Datenbanken (einfache Migration). */
-function spalte_sicherstellen(PDO $pdo, string $tabelle, string $spalte, string $definition): void
+function spalte_sicherstellen(PDO $pdo, string $tabelle, string $spalte, string $definition): bool
 {
     $spalten = $pdo->query("PRAGMA table_info($tabelle)")->fetchAll(PDO::FETCH_COLUMN, 1);
-    if (!in_array($spalte, $spalten, true)) {
-        $pdo->exec("ALTER TABLE $tabelle ADD COLUMN $spalte $definition");
+    if (in_array($spalte, $spalten, true)) {
+        return false;
     }
+    $pdo->exec("ALTER TABLE $tabelle ADD COLUMN $spalte $definition");
+    return true;
+}
+
+function einstellung(string $schluessel, ?string $standard = null): ?string
+{
+    $stmt = db()->prepare('SELECT wert FROM einstellungen WHERE schluessel = ?');
+    $stmt->execute([$schluessel]);
+    $wert = $stmt->fetchColumn();
+    return $wert === false ? $standard : $wert;
+}
+
+function einstellung_setzen(string $schluessel, string $wert): void
+{
+    db()->prepare('INSERT INTO einstellungen (schluessel, wert) VALUES (?, ?)
+                   ON CONFLICT(schluessel) DO UPDATE SET wert = excluded.wert')->execute([$schluessel, $wert]);
+}
+
+/**
+ * Liest Beträge in Schweizer und deutscher Schreibweise:
+ * "1'234.50", "1’234.–", "CHF 1 234,50", "1.234,50", "239".
+ */
+function betrag_lesen(mixed $wert): ?float
+{
+    if (is_int($wert) || is_float($wert)) {
+        return (float) $wert;
+    }
+    $s = preg_replace('/[.,]\s*[-–—]+\s*$/u', '', trim((string) $wert)); // "1'234.–"
+    $s = preg_replace('/[^0-9.,\-]/', '', $s);
+    if ($s === '' || $s === '-') {
+        return null;
+    }
+    $komma = strrpos($s, ',');
+    $punkt = strrpos($s, '.');
+    if ($komma !== false && $punkt !== false) {
+        // Das hintere Zeichen ist das Dezimaltrennzeichen.
+        $s = $komma > $punkt ? str_replace(['.', ','], ['', '.'], $s) : str_replace(',', '', $s);
+    } elseif ($komma !== false) {
+        $s = preg_match('/,\d{1,2}$/', $s) && substr_count($s, ',') === 1 ? str_replace(',', '.', $s) : str_replace(',', '', $s);
+    } elseif ($punkt !== false && substr_count($s, '.') > 1) {
+        $s = str_replace('.', '', $s);
+    }
+    return is_numeric($s) ? (float) $s : null;
+}
+
+/** Rabatt in Prozent gegenüber UVP (0, wenn kein Rabatt). */
+function rabatt_prozent(?float $uvp, float $preis): int
+{
+    return $uvp && $uvp > $preis ? (int) round((1 - $preis / $uvp) * 100) : 0;
+}
+
+/** Rundet auf 5 Rappen. */
+function runden_5rp(float $betrag): float
+{
+    return round($betrag * 20) / 20;
 }
 
 const STATUS = ['offen' => 'Offen', 'angenommen' => 'Angenommen', 'abgelehnt' => 'Abgelehnt'];
@@ -134,8 +197,12 @@ function summen(array $positionen): array
     foreach ($positionen as $p) {
         $netto += $p['preis'] * $p['menge'];
     }
-    $mwst = round($netto * MWST_SATZ / 0.05) * 0.05; // auf 5 Rappen gerundet
-    return ['netto' => $netto, 'mwst' => $mwst, 'brutto' => $netto + $mwst];
+    $uvp = 0.0;
+    foreach ($positionen as $p) {
+        $uvp += ($p['uvp'] ?? $p['preis']) * $p['menge'];
+    }
+    $mwst = runden_5rp($netto * MWST_SATZ);
+    return ['netto' => $netto, 'mwst' => $mwst, 'brutto' => $netto + $mwst, 'ersparnis' => max(0.0, $uvp - $netto)];
 }
 
 function flash(?string $text = null): ?string
@@ -147,4 +214,28 @@ function flash(?string $text = null): ?string
     $t = $_SESSION['flash'] ?? null;
     unset($_SESSION['flash']);
     return $t;
+}
+
+/** Preisanzeige im Shop: UVP, bei Rabatt durchgestrichen mit Kundenpreis. */
+function preis_block(array $p): string
+{
+    $uvp = (float) ($p['uvp'] ?? $p['preis']);
+    $preis = (float) $p['preis'];
+    $einheit = '<small>/ ' . e($p['einheit']) . '</small>';
+    if ($r = rabatt_prozent($uvp, $preis)) {
+        return '<div class="preis">'
+            . '<div class="uvp">UVP <s>' . chf($uvp) . '</s> <span class="rabatt">−' . $r . ' %</span></div>'
+            . '<div class="ihr-preis">' . chf($preis) . ' ' . $einheit . '</div>'
+            . '</div>';
+    }
+    return '<div class="preis"><div class="uvp">UVP</div><div class="ihr-preis">' . chf($preis) . ' ' . $einheit . '</div></div>';
+}
+
+/** Zeile «Ihre Ersparnis gegenüber UVP» für Summenblöcke. */
+function ersparnis_zeile(array $summen, int $spalten, string $label = 'Ihre Ersparnis gegenüber UVP'): string
+{
+    if ($summen['ersparnis'] < 0.005) {
+        return '';
+    }
+    return '<tr class="ersparnis"><td colspan="' . $spalten . '">' . e($label) . '</td><td class="num">' . chf($summen['ersparnis']) . '</td></tr>';
 }

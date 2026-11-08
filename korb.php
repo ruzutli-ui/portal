@@ -41,9 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $offerteId = (int) $pdo->lastInsertId();
 
         // Preise und Bezeichnungen werden eingefroren, damit spätere Preisänderungen die Offerte nicht verändern.
-        $ins = $pdo->prepare('INSERT INTO offert_positionen (offerte_id, artikelnr, bezeichnung, einheit, preis, menge) VALUES (?, ?, ?, ?, ?, ?)');
+        $ins = $pdo->prepare('INSERT INTO offert_positionen (offerte_id, artikelnr, bezeichnung, einheit, uvp, preis, menge) VALUES (?, ?, ?, ?, ?, ?, ?)');
         foreach (korb_positionen() as $p) {
-            $ins->execute([$offerteId, $p['artikelnr'], $p['bezeichnung'], $p['einheit'], $p['preis'], $p['menge']]);
+            $ins->execute([$offerteId, $p['artikelnr'], $p['bezeichnung'], $p['einheit'], $p['uvp'] ?? $p['preis'], $p['preis'], $p['menge']]);
         }
         $pdo->commit();
 
@@ -75,13 +75,14 @@ kopf('Offert-Korb', 'korb', 'Kundenportal', 'Mengen prüfen und daraus eine verb
                 <div class="tabelle-wrap">
                     <table class="positionen">
                         <thead>
-                            <tr><th>Art.-Nr.</th><th>Bezeichnung</th><th class="num">Preis</th><th class="num">Menge</th><th class="num">Total</th><th></th></tr>
+                            <tr><th>Art.-Nr.</th><th>Bezeichnung</th><th class="num">UVP</th><th class="num">Ihr Preis</th><th class="num">Menge</th><th class="num">Total</th><th></th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($positionen as $p): ?>
                                 <tr>
                                     <td class="id"><?= e($p['artikelnr']) ?></td>
                                     <td><?= e($p['bezeichnung']) ?></td>
+                                    <td class="num gedimmt"><?= chf((float) ($p['uvp'] ?? $p['preis'])) ?></td>
                                     <td class="num"><?= chf($p['preis']) ?></td>
                                     <td class="num">
                                         <input form="korb-form" type="number" name="menge[<?= (int) $p['id'] ?>]" value="<?= (int) $p['menge'] ?>" min="0" max="9999" class="menge" aria-label="Menge">
@@ -100,9 +101,10 @@ kopf('Offert-Korb', 'korb', 'Kundenportal', 'Mengen prüfen und daraus eine verb
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot>
-                            <tr><td colspan="4">Zwischensumme exkl. MwSt.</td><td class="num"><?= chf($s['netto']) ?></td><td></td></tr>
-                            <tr><td colspan="4">MwSt. <?= number_format(MWST_SATZ * 100, 1) ?> %</td><td class="num"><?= chf($s['mwst']) ?></td><td></td></tr>
-                            <tr class="total"><td colspan="4">Total inkl. MwSt.</td><td class="num"><?= chf($s['brutto']) ?></td><td></td></tr>
+                            <tr><td colspan="5">Zwischensumme exkl. MwSt.</td><td class="num"><?= chf($s['netto']) ?></td><td></td></tr>
+                            <tr><td colspan="5">MwSt. <?= number_format(MWST_SATZ * 100, 1) ?> %</td><td class="num"><?= chf($s['mwst']) ?></td><td></td></tr>
+                            <tr class="total"><td colspan="5">Total inkl. MwSt.</td><td class="num"><?= chf($s['brutto']) ?></td><td></td></tr>
+                            <?= str_replace('</tr>', '<td></td></tr>', ersparnis_zeile($s, 5)) ?>
                         </tfoot>
                     </table>
                 </div>

@@ -38,3 +38,8 @@ CREATE TABLE IF NOT EXISTS offert_positionen (
     preis        REAL NOT NULL,
     menge        INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS einstellungen (
+    schluessel  TEXT PRIMARY KEY,
+    wert        TEXT NOT NULL
+);

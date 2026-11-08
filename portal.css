@@ -253,3 +253,48 @@ tr.inaktiv td { color: var(--midnight-w40); }
   .suche { width: 100%; }
 }
 .admin td.id, .admin .status { white-space: nowrap; }
+
+/* ─── UVP / Kundenpreis ──────────────────────────────────── */
+.preis .uvp { font-family: 'Open Sans', sans-serif; font-weight: 600; font-size: 12px; color: var(--midnight-w40); letter-spacing: 0.02em; }
+.preis .uvp s { font-weight: 400; }
+.preis .ihr-preis { line-height: 1.3; }
+.rabatt {
+  display: inline-block;
+  background: var(--sun);
+  color: var(--midnight);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  margin-left: 2px;
+}
+.rabatt-text { color: #1E6B34; font-weight: 600; }
+tfoot tr.ersparnis td { color: #1E6B34; font-weight: 600; font-size: 14px; padding-top: 2px; }
+.quelle {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--midnight-w20);
+  background: var(--midnight-w90);
+  padding: 1px 6px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* ─── Import ─────────────────────────────────────────────── */
+.zuordnung { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.zuordnung select, .zuordnung input { width: 100%; font-size: 14px; padding: 9px 10px; }
+select.fehlt { border-color: #B3261E; box-shadow: 0 0 0 3px #FBE9E7; }
+.feld-hinweis { margin: 4px 0 0; font-size: 13px; align-self: end; }
+.checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; color: var(--midnight); margin-top: 16px; }
+.checkbox input { width: 18px; height: 18px; }
+.kennzahlen.klein .kennzahl { box-shadow: none; border: 1.5px solid var(--midnight-w90); padding: 14px 18px; }
+.kennzahlen.klein .kennzahl-wert { font-size: 22px; }
+.kennzahl-wert.warnung { color: #B3261E; }
+.unter-titel { font-family: 'Ubuntu', sans-serif; font-weight: 500; font-size: 16px; margin: 24px 0 8px; }
+.fehlerliste { font-size: 14px; color: var(--midnight-w20); padding-left: 20px; }
+.knopfleiste.ohne-abstand { margin-top: 0; }
+input[type=file] { padding: 10px; background: var(--midnight-w95); }

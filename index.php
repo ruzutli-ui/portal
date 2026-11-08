@@ -53,7 +53,7 @@ kopf('Shop', 'shop', 'Kundenportal', 'Produkte und Dienstleistungen auswählen, 
                         <h3><?= e($p['bezeichnung']) ?></h3>
                         <p><?= e($p['beschreibung']) ?></p>
                         <div class="produkt-fuss">
-                            <div class="preis"><?= chf($p['preis']) ?> <small>/ <?= e($p['einheit']) ?></small></div>
+                            <?= preis_block($p) ?>
                             <form method="post" class="in-korb">
                                 <?= csrf_feld() ?>
                                 <input type="hidden" name="produkt_id" value="<?= (int) $p['id'] ?>">

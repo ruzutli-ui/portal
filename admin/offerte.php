@@ -43,7 +43,7 @@ admin_kopf('Offerte ' . $o['nummer'], 'offerten', $o['titel'] ?: null);
                 <div class="tabelle-wrap">
                     <table class="positionen">
                         <thead>
-                            <tr><th>Pos.</th><th>Art.-Nr.</th><th>Bezeichnung</th><th class="num">Menge</th><th class="num">Preis</th><th class="num">Total</th></tr>
+                            <tr><th>Pos.</th><th>Art.-Nr.</th><th>Bezeichnung</th><th class="num">Menge</th><th class="num">UVP</th><th class="num">Kundenpreis</th><th class="num">Total</th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($positionen as $i => $p): ?>
@@ -52,15 +52,17 @@ admin_kopf('Offerte ' . $o['nummer'], 'offerten', $o['titel'] ?: null);
                                     <td class="id"><?= e($p['artikelnr']) ?></td>
                                     <td><?= e($p['bezeichnung']) ?></td>
                                     <td class="num"><?= (int) $p['menge'] ?> <?= e($p['einheit']) ?></td>
+                                <td class="num gedimmt"><?= chf((float) ($p['uvp'] ?? $p['preis'])) ?></td>
                                     <td class="num"><?= chf($p['preis']) ?></td>
                                     <td class="num"><?= chf($p['preis'] * $p['menge']) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                         <tfoot>
-                            <tr><td colspan="5">Zwischensumme exkl. MwSt.</td><td class="num"><?= chf($s['netto']) ?></td></tr>
-                            <tr><td colspan="5">MwSt. <?= number_format(MWST_SATZ * 100, 1) ?> %</td><td class="num"><?= chf($s['mwst']) ?></td></tr>
-                            <tr class="total"><td colspan="5">Total inkl. MwSt.</td><td class="num"><?= chf($s['brutto']) ?></td></tr>
+                            <tr><td colspan="6">Zwischensumme exkl. MwSt.</td><td class="num"><?= chf($s['netto']) ?></td></tr>
+                            <tr><td colspan="6">MwSt. <?= number_format(MWST_SATZ * 100, 1) ?> %</td><td class="num"><?= chf($s['mwst']) ?></td></tr>
+                            <tr class="total"><td colspan="6">Total inkl. MwSt.</td><td class="num"><?= chf($s['brutto']) ?></td></tr>
+                        <?= ersparnis_zeile($s, 6, 'Rabatt gegenüber UVP') ?>
                         </tfoot>
                     </table>
                 </div>

@@ -3,7 +3,7 @@ require __DIR__ . '/_init.php';
 admin_erforderlich();
 
 $pdo = db();
-$felder = ['artikelnr', 'kategorie', 'bezeichnung', 'beschreibung', 'einheit', 'preis'];
+$felder = ['artikelnr', 'kategorie', 'bezeichnung', 'beschreibung', 'einheit', 'uvp', 'preis'];
 $fehler = '';
 $formular = null; // Produkt, das gerade bearbeitet oder neu erfasst wird
 
@@ -22,13 +22,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($felder as $f) {
             $werte[$f] = trim($_POST[$f] ?? '');
         }
-        $werte['preis'] = str_replace(["'", "\u{2019}", ' ', ','], ['', '', '', '.'], $werte['preis']);
         $werte['einheit'] = $werte['einheit'] ?: 'Stk.';
+        $uvp = betrag_lesen($werte['uvp']);
+        // Leerer Kundenpreis = UVP (kein Rabatt)
+        $preis = $werte['preis'] === '' ? $uvp : betrag_lesen($werte['preis']);
 
         if ($werte['artikelnr'] === '' || $werte['kategorie'] === '' || $werte['bezeichnung'] === '') {
             $fehler = 'Artikelnummer, Kategorie und Bezeichnung sind Pflichtfelder.';
-        } elseif (!is_numeric($werte['preis']) || (float) $werte['preis'] < 0) {
-            $fehler = 'Bitte einen gültigen Preis eingeben.';
+        } elseif ($uvp === null || $uvp < 0) {
+            $fehler = 'Bitte eine gültige UVP eingeben.';
+        } elseif ($preis === null || $preis < 0) {
+            $fehler = 'Bitte einen gültigen Kundenpreis eingeben.';
         } else {
             $dup = $pdo->prepare('SELECT id FROM produkte WHERE artikelnr = ? AND id <> ?');
             $dup->execute([$werte['artikelnr'], $id]);
@@ -38,13 +42,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($fehler === '') {
-            $werte['preis'] = round((float) $werte['preis'], 2);
+            $werte['uvp'] = round($uvp, 2);
+            $werte['preis'] = round($preis, 2);
             if ($id > 0) {
-                $pdo->prepare('UPDATE produkte SET artikelnr = ?, kategorie = ?, bezeichnung = ?, beschreibung = ?, einheit = ?, preis = ? WHERE id = ?')
+                $pdo->prepare('UPDATE produkte SET artikelnr = ?, kategorie = ?, bezeichnung = ?, beschreibung = ?, einheit = ?, uvp = ?, preis = ? WHERE id = ?')
                     ->execute([...array_values($werte), $id]);
                 flash('Produkt «' . $werte['bezeichnung'] . '» gespeichert. Bestehende Offerten behalten ihre Preise.');
             } else {
-                $pdo->prepare('INSERT INTO produkte (artikelnr, kategorie, bezeichnung, beschreibung, einheit, preis) VALUES (?, ?, ?, ?, ?, ?)')
+                $pdo->prepare('INSERT INTO produkte (artikelnr, kategorie, bezeichnung, beschreibung, einheit, uvp, preis) VALUES (?, ?, ?, ?, ?, ?, ?)')
                     ->execute(array_values($werte));
                 $id = (int) $pdo->lastInsertId();
                 flash('Produkt «' . $werte['bezeichnung'] . '» erfasst und im Shop sichtbar.');
@@ -56,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($formular === null && isset($_GET['neu'])) {
-    $formular = array_fill_keys($felder, '') + ['id' => 0, 'einheit' => 'Stk.'];
+    $formular = ['id' => 0, 'einheit' => 'Stk.'] + array_fill_keys($felder, '');
 } elseif ($formular === null && isset($_GET['id'])) {
     $stmt = $pdo->prepare('SELECT * FROM produkte WHERE id = ?');
     $stmt->execute([(int) $_GET['id']]);
@@ -91,9 +96,15 @@ admin_kopf('Produkte', 'produkte', 'Sortiment und Preise für den Kunden-Shop pf
                     <label class="span-2">Beschreibung
                         <textarea name="beschreibung" rows="2"><?= e($formular['beschreibung']) ?></textarea>
                     </label>
-                    <label>Preis CHF (exkl. MwSt.)
-                        <input name="preis" value="<?= e((string) $formular['preis']) ?>" inputmode="decimal" placeholder="0.00" required>
+                    <label>UVP CHF (exkl. MwSt.)
+                        <input name="uvp" value="<?= e((string) $formular['uvp']) ?>" inputmode="decimal" placeholder="0.00" required>
                     </label>
+                    <label>Kundenpreis CHF (exkl. MwSt.)
+                        <input name="preis" value="<?= e((string) $formular['preis']) ?>" inputmode="decimal" placeholder="leer = UVP">
+                    </label>
+                    <?php if (($formular['quelle'] ?? '') === 'salesmachine'): ?>
+                        <p class="hinweis span-2">Aus der Sales Machine importiert (<?= datum($formular['importiert'], true) ?>). Der nächste Import überschreibt Bezeichnung, UVP und Kundenpreis.</p>
+                    <?php endif; ?>
                     <label>Einheit
                         <input name="einheit" value="<?= e($formular['einheit']) ?>" list="einheiten" placeholder="Stk.">
                         <datalist id="einheiten">
@@ -111,20 +122,31 @@ admin_kopf('Produkte', 'produkte', 'Sortiment und Preise für den Kunden-Shop pf
         <section class="card">
             <div class="werkzeugleiste">
                 <h2>Sortiment <span class="count"><?= count($produkte) ?></span></h2>
-                <a href="produkte.php?neu=1#formular" class="btn-sun">+ Neues Produkt</a>
+                <div class="knopfleiste ohne-abstand">
+                    <a href="import.php" class="btn-small btn-ghost">Import aus Sales Machine</a>
+                    <a href="produkte.php?neu=1#formular" class="btn-sun">+ Neues Produkt</a>
+                </div>
             </div>
             <div class="tabelle-wrap">
                 <table>
                     <thead>
-                        <tr><th>Art.-Nr.</th><th>Bezeichnung</th><th>Kategorie</th><th class="num">Preis</th><th>Im Shop</th><th class="aktionen">Aktionen</th></tr>
+                        <tr><th>Art.-Nr.</th><th>Bezeichnung</th><th>Kategorie</th><th class="num">UVP</th><th class="num">Kundenpreis</th><th>Im Shop</th><th class="aktionen">Aktionen</th></tr>
                     </thead>
                     <tbody>
                         <?php foreach ($produkte as $p): ?>
                             <tr id="p<?= (int) $p['id'] ?>" class="<?= $p['aktiv'] ? '' : 'inaktiv' ?>">
                                 <td class="id"><?= e($p['artikelnr']) ?></td>
-                                <td><?= e($p['bezeichnung']) ?><br><small class="gedimmt"><?= e($p['beschreibung']) ?></small></td>
+                                <td>
+                                    <?= e($p['bezeichnung']) ?>
+                                    <?php if ($p['quelle'] === 'salesmachine'): ?><span class="quelle" title="Importiert <?= e(datum($p['importiert'], true)) ?>">Sales Machine</span><?php endif; ?>
+                                    <br><small class="gedimmt"><?= e($p['beschreibung']) ?></small>
+                                </td>
                                 <td><?= e($p['kategorie']) ?></td>
-                                <td class="num"><?= chf((float) $p['preis']) ?> <small class="gedimmt">/ <?= e($p['einheit']) ?></small></td>
+                                <td class="num"><?= chf((float) $p['uvp']) ?> <small class="gedimmt">/ <?= e($p['einheit']) ?></small></td>
+                                <td class="num">
+                                    <?= chf((float) $p['preis']) ?>
+                                    <?php if ($r = rabatt_prozent((float) $p['uvp'], (float) $p['preis'])): ?><br><small class="rabatt-text">−<?= $r ?> %</small><?php endif; ?>
+                                </td>
                                 <td><?= $p['aktiv'] ? '<span class="status status-angenommen">Sichtbar</span>' : '<span class="status status-offen">Ausgeblendet</span>' ?></td>
                                 <td class="aktionen">
                                     <a href="produkte.php?id=<?= (int) $p['id'] ?>#formular" class="btn-small btn-ghost">Bearbeiten</a>
